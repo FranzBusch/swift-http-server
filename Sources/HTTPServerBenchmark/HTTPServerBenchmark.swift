@@ -21,6 +21,7 @@ import HTTPTypes
 import Logging
 import NIOCore
 import NIOHTTPServer
+import NIOPosix
 import PlatformHTTPServer
 import X509
 
@@ -64,6 +65,9 @@ struct HTTPServerBenchmark: AsyncParsableCommand {
     @Option(help: "The size of the response body in bytes.")
     var responseSize: Int = 15
 
+    @Flag(help: "Run the tasks of NIOHTTPServer on its event loop instead of the global executor.")
+    var nioPinTasks = false
+
     @Option(help: "The log level: trace, debug, info, notice, warning, error or critical.")
     var logLevel: String = "info"
 
@@ -92,8 +96,15 @@ struct HTTPServerBenchmark: AsyncParsableCommand {
                 )
             )
             try await withThrowingTaskGroup(of: Void.self) { group in
+                let pin = self.nioPinTasks
                 group.addTask {
-                    try await Self.serve(on: server, body: body)
+                    if pin {
+                        try await withTaskExecutorPreference(EventLoopTaskExecutor(NIOSingletons.posixEventLoopGroup.next())) {
+                            try await Self.serve(on: server, body: body)
+                        }
+                    } else {
+                        try await Self.serve(on: server, body: body)
+                    }
                 }
                 let addresses = try await server.listeningAddresses
                 if let port = addresses.first.flatMap({ $0.ipv4?.port ?? $0.ipv6?.port }) {
@@ -197,5 +208,21 @@ struct SelfSignedCertificate {
             issuerPrivateKey: privateKey
         )
         return SelfSignedCertificate(certificate: certificate, privateKey: privateKey)
+    }
+}
+
+/// Runs the jobs of Swift concurrency on a NIO event loop.
+final class EventLoopTaskExecutor: TaskExecutor, @unchecked Sendable {
+    private let loop: any EventLoop
+
+    init(_ loop: any EventLoop) {
+        self.loop = loop
+    }
+
+    func enqueue(_ job: consuming ExecutorJob) {
+        let job = UnownedJob(job)
+        self.loop.execute {
+            job.runSynchronously(on: self.asUnownedTaskExecutor())
+        }
     }
 }
