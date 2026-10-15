@@ -69,7 +69,7 @@ Scripts/compare-http-servers.sh                 # RUNS=3 THREADS=1 by default
 `HTTPServerBenchmark` answers every request with the same body through the same handler, the same self-signed P-256
 certificate and the same thread count. The script drives it with `h2load` and prints the median requests per second.
 
-Result on an Apple silicon Mac, debug symbols off, loopback, `h2load` with two threads on the same machine, one server
+Result on an Apple silicon Mac, release build, loopback, `h2load` with two threads on the same machine, one server
 thread, median of three runs. The numbers describe this machine only.
 
 | Scenario | NIOHTTPServer | PlatformHTTPServer |
@@ -77,20 +77,21 @@ thread, median of three runs. The numbers describe this machine only.
 | 16 connections x 10 streams, 15 byte body | 36 k req/s | 211 k req/s |
 | 100 connections x 100 streams, 15 byte body | 38 k req/s | 279 k req/s |
 | 16 connections x 10 streams, 16 KiB body | 29 k req/s | 75 k req/s |
-| 8 connections x 8 streams, 1 MiB body | 2.9 k req/s, 277 failed requests | 1.9 k req/s |
+| 8 connections x 8 streams, 1 MiB body | 2.9 k req/s, 277 failed of 9000 | 1.9 k req/s |
 
 Open questions before the ratio means anything:
 
 * The NIO numbers are lower than expected for one thread. Profile `NIOHTTPServer` before concluding.
-* NIO fails about 10 % of the 1 MiB requests. The cause is not investigated.
+* NIO fails some of the 1 MiB requests (277 of 9000 over three runs). The cause is not investigated.
 * Large bodies cost more in the platform server than they should: the copy through `[UInt8]` in `HTTP2Frame`, the
   emulated in-place AES-GCM in swift-tls and the `Data` round trip in it.
 
 ## Known limitations
 
 * HTTP/2 only. The server refuses a connection that does not negotiate `h2`.
-* The certificate has to be a P-256 key. The key exchange supports X25519 and P-256, the cipher suites AES-128-GCM and
-  ChaCha20-Poly1305. No session resumption, no client certificates.
+* The certificate has to be a P-256 key. The key exchange supports X25519 and P-256. The record protection implements
+  AES-GCM only, although the handshake configuration also lists ChaCha20-Poly1305, so a client that offers only
+  ChaCha20 fails. No session resumption, no client certificates.
 * No CONTINUATION frames, so a header block has to fit in one frame. A frame of an unknown type ends the connection.
 * The HPACK encoder ignores `SETTINGS_HEADER_TABLE_SIZE` of the peer and does not use Huffman coding.
 * The server replenishes receive windows when it gets the data. The peer gets no backpressure.
