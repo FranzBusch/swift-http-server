@@ -96,11 +96,10 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
         payload.reserveCapacity(buffer.count)
         var consumer = buffer.consumeAll()
         while true {
-            let span = consumer.drainNext()
-            if span.isEmpty { break }
-            let bytes = span.span
-            for index in 0..<bytes.count {
-                payload.append(bytes[index])
+            let chunk = consumer.drainNext()
+            if chunk.isEmpty { break }
+            chunk.span.withUnsafeBufferPointer { bytes in
+                unsafe payload.append(contentsOf: bytes)
             }
         }
         return payload
