@@ -44,7 +44,6 @@ enum Implementation: String, ExpressibleByArgument, CaseIterable {
 /// h2load -n 100000 -c 16 -m 10 https://127.0.0.1:8443/
 /// ```
 @available(anyAppleOS 27.0, *)
-@main
 struct HTTPServerBenchmark: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Serves a fixed HTTP/2 response with NIOHTTPServer or the PlatformHTTPServer."
@@ -65,6 +64,9 @@ struct HTTPServerBenchmark: AsyncParsableCommand {
     @Option(help: "The size of the response body in bytes.")
     var responseSize: Int = 15
 
+    @Flag(help: "Make the NIO event loops the global executor of Swift concurrency, so that all tasks run on them.")
+    var nioGlobalExecutor = false
+
     @Flag(help: "Run the tasks of NIOHTTPServer on its event loop instead of the global executor.")
     var nioPinTasks = false
 
@@ -82,7 +84,7 @@ struct HTTPServerBenchmark: AsyncParsableCommand {
         switch self.implementation {
         case .nio:
             // `NIOHTTPServer` takes no event loop group, so the thread count is set on the singleton.
-            NIOSingletons.groupLoopCountSuggestion = self.threads
+            if !self.nioGlobalExecutor { NIOSingletons.groupLoopCountSuggestion = self.threads }
             let server = NIOHTTPServer(
                 logger: logger,
                 configuration: try .init(
@@ -224,5 +226,26 @@ final class EventLoopTaskExecutor: TaskExecutor, @unchecked Sendable {
         self.loop.execute {
             job.runSynchronously(on: self.asUnownedTaskExecutor())
         }
+    }
+}
+
+/// The entry point, which has to configure the executors before anything uses them.
+@available(anyAppleOS 27.0, *)
+@main
+struct Entry {
+    static func main() async {
+        if CommandLine.arguments.contains("--nio-global-executor") {
+            // This has to happen before the first task runs on the global executor, and the thread count has to be
+            // set before the singleton group is created.
+            if let index = CommandLine.arguments.firstIndex(of: "--threads"),
+                index + 1 < CommandLine.arguments.count,
+                let threads = Int(CommandLine.arguments[index + 1])
+            {
+                NIOSingletons.groupLoopCountSuggestion = threads
+            }
+            let installed = NIOSingletons.unsafeTryInstallSingletonPosixEventLoopGroupAsConcurrencyGlobalExecutor()
+            FileHandle.standardError.write(Data("global executor takeover installed: \(installed)\n".utf8))
+        }
+        await HTTPServerBenchmark.main()
     }
 }
