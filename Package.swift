@@ -79,7 +79,7 @@ traits.insert(
 let package = Package(
     name: "swift-http-server",
     platforms: [  // TODO: Needed until https://github.com/swiftlang/swift/issues/89028 is fixed
-        .macOS(.v15),
+        .macOS("27.0"),
         .iOS(.v18),
         .watchOS(.v11),
         .tvOS(.v18),
@@ -89,7 +89,11 @@ let package = Package(
         .library(
             name: "NIOHTTPServer",
             targets: ["NIOHTTPServer"]
-        )
+        ),
+        .library(
+            name: "PlatformHTTPServer",
+            targets: ["PlatformHTTPServer"]
+        ),
     ],
     traits: traits,
     dependencies: [
@@ -107,6 +111,26 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.37.0"),
         .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.35.1"),
         .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.44.0"),
+        // [prototype] The platform HTTP server is built on local worktrees of these packages. The nio-http2
+        // worktree only provides `HTTP2StateMachine`. Its directory name gives it a different package identity
+        // than the `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
+        .package(path: "../../../swift-nio-http2-worktrees/http-server-prototype/swift-nio-http2/Prototype/swift-nio-http2-state-machine"),
+        .package(path: "../../../../../swiftlang/swift-tls-worktrees/http-server-prototype/swift-tls"),
+        .package(path: "../../../../../swiftlang/swift-binary-parsing-worktrees/http-server-prototype/swift-binary-parsing"),
+        .package(
+            url: "https://github.com/apple/swift-async-algorithms.git",
+            revision: "11645b8feb9081ecf0f27b6f4d0821bd550fed01",
+            traits: ["UnstableAsyncStreaming"]
+        ),
+        .package(
+            url: "https://github.com/apple/swift-collections.git",
+            exact: "1.6.0",
+            traits: ["UnstableContainersPreview", "UnstableHashedContainers"]
+        ),
+        .package(url: "https://github.com/apple/swift-http-types.git", from: "1.5.1"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.5.1"),
+        .package(url: "https://github.com/apple/swift-asn1.git", from: "1.5.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         .package(url: "https://github.com/apple/swift-configuration.git", from: "1.2.0", traits: []),
         .package(url: "https://github.com/swift-server/swift-service-lifecycle.git", from: "2.11.0"),
     ],
@@ -177,6 +201,44 @@ let package = Package(
                 ),
                 .product(name: "NIOHTTP3", package: "swift-nio-http3", condition: .when(traits: ["HTTP3"])),
                 .product(name: "HTTPAPIs", package: "swift-http-api-proposal"),
+            ],
+            swiftSettings: extraSettings
+        ),
+        .target(
+            name: "PlatformHTTPServer",
+            dependencies: [
+                .product(name: "AsyncStreaming", package: "swift-async-algorithms"),
+                .product(name: "BasicContainers", package: "swift-collections"),
+                .product(name: "ContainersPreview", package: "swift-collections"),
+                .product(name: "DequeModule", package: "swift-collections"),
+                .product(name: "BinaryParsing", package: "swift-binary-parsing"),
+                .product(name: "BinaryParsingAsync", package: "swift-binary-parsing"),
+                .product(name: "BinarySerialization", package: "swift-binary-parsing"),
+                .product(name: "HTTP2StateMachine", package: "swift-nio-http2-state-machine"),
+                .product(name: "SwiftTLSStateMachine", package: "swift-tls"),
+                .product(name: "HTTPAPIs", package: "swift-http-api-proposal"),
+                .product(name: "HTTPTypes", package: "swift-http-types"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "X509", package: "swift-certificates"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "SwiftASN1", package: "swift-asn1"),
+            ],
+            swiftSettings: extraSettings
+        ),
+        .testTarget(
+            name: "PlatformHTTPServerTests",
+            dependencies: [
+                "PlatformHTTPServer",
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "HTTP2StateMachine", package: "swift-nio-http2-state-machine"),
+                .product(name: "BinaryParsing", package: "swift-binary-parsing"),
+                .product(name: "BinaryParsingAsync", package: "swift-binary-parsing"),
+                .product(name: "BinarySerialization", package: "swift-binary-parsing"),
+                .product(name: "AsyncStreaming", package: "swift-async-algorithms"),
+                .product(name: "BasicContainers", package: "swift-collections"),
+                .product(name: "HTTPTypes", package: "swift-http-types"),
+                .product(name: "X509", package: "swift-certificates"),
+                .product(name: "Crypto", package: "swift-crypto"),
             ],
             swiftSettings: extraSettings
         ),
