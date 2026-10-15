@@ -94,6 +94,10 @@ let package = Package(
             name: "PlatformHTTPServer",
             targets: ["PlatformHTTPServer"]
         ),
+        .executable(
+            name: "HTTPServerBenchmark",
+            targets: ["HTTPServerBenchmark"]
+        ),
     ],
     traits: traits,
     dependencies: [
@@ -116,6 +120,10 @@ let package = Package(
         // than the `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
         .package(path: "../../../swift-nio-http2-worktrees/http-server-prototype/swift-nio-http2/Prototype/swift-nio-http2-state-machine"),
         .package(path: "../../../../../swiftlang/swift-tls-worktrees/http-server-prototype/swift-tls"),
+        .package(
+            path: "../../../../../swiftlang/swift-platform-executors-worktrees/http-server-prototype/swift-platform-executors",
+            traits: ["ExperimentalAsyncStreaming"]
+        ),
         .package(path: "../../../../../swiftlang/swift-binary-parsing-worktrees/http-server-prototype/swift-binary-parsing"),
         .package(
             url: "https://github.com/apple/swift-async-algorithms.git",
@@ -216,12 +224,31 @@ let package = Package(
                 .product(name: "BinarySerialization", package: "swift-binary-parsing"),
                 .product(name: "HTTP2StateMachine", package: "swift-nio-http2-state-machine"),
                 .product(name: "SwiftTLSStateMachine", package: "swift-tls"),
+                .product(name: "PlatformExecutors", package: "swift-platform-executors"),
                 .product(name: "HTTPAPIs", package: "swift-http-api-proposal"),
                 .product(name: "HTTPTypes", package: "swift-http-types"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "X509", package: "swift-certificates"),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "SwiftASN1", package: "swift-asn1"),
+            ],
+            swiftSettings: extraSettings
+        ),
+        // Serves the same response with `NIOHTTPServer` or the `PlatformHTTPServer`, so that a load generator can compare
+        // the two.
+        .executableTarget(
+            name: "HTTPServerBenchmark",
+            dependencies: [
+                "NIOHTTPServer",
+                "PlatformHTTPServer",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "BasicContainers", package: "swift-collections"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "HTTPAPIs", package: "swift-http-api-proposal"),
+                .product(name: "HTTPTypes", package: "swift-http-types"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "X509", package: "swift-certificates"),
             ],
             swiftSettings: extraSettings
         ),
