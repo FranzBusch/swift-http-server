@@ -119,20 +119,21 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.37.0"),
         .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.35.1"),
         .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.44.0"),
-        // [prototype] The platform HTTP server is built on branches of forks in the internal GitHub. The state
+        // [prototype] The platform HTTP server is built on forks in the internal GitHub, pinned to revisions of their
+        // branches (bump them from the leaves up: binary-parsing, then the packages that depend on it, then this one). The state
         // machine package only provides `HTTP2StateMachine`. Its name gives it a different package identity than the
         // `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-nio-http2-state-machine.git",
-            branch: "main"
+            revision: "e00faf20c78591d47bbbf47db9408e0c7738020b"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-tls.git",
-            branch: "fb-http-server-prototype"
+            revision: "b929b5aea715e4cb5898139b06730f0efcb502e5"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-platform-executors.git",
-            branch: "fb-async-streaming-conformances",
+            revision: "4e381a45753145deca2f958ac290c44060d1c576",
             traits: [
                 "ExperimentalAsyncStreaming",
                 .trait(name: "ExperimentalIOUring", condition: .when(traits: ["IOUring"])),
@@ -140,7 +141,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-binary-parsing.git",
-            branch: "fb-http-server-prototype"
+            revision: "1ce476d539a03fb30d01485d0c8ed87d6cebde8a"
         ),
         .package(
             url: "https://github.com/apple/swift-async-algorithms.git",
