@@ -4,7 +4,7 @@ This document records the prototype of an HTTP/2 over TLS 1.3 server that does n
 state of every branch and the work that remains. `PlatformHTTPServer.md` describes the design. This document describes
 the history, the measurements and the open work.
 
-Nothing described here is pushed to a remote at the time of writing.
+The branches are pushed to forks in the internal GitHub (`github.pie.apple.com/fbusch`), see "Pushed forks". Nothing is pushed to a public repository or to the `swift-mirrors` themselves.
 
 ## Goal
 
@@ -119,21 +119,48 @@ Commits that start with `[local]` only wire the packages together by path and mu
 The swift-tls `fb-pure-state`, swift-nio-http2 `fb-pure-state` and swift-binary-parsing `fb-networking` branches are
 unlanded work of their own and have to land before the commits above.
 
-## Wiring that is local only
+## Pushed forks
 
-The `Package.swift` of the swift-http-server branch uses path dependencies on the sibling worktrees. It also contains:
+Forks of the `swift-mirrors` repositories under `fbusch` on `github.pie.apple.com`, one branch each. All manifests use
+URL and branch dependencies on these forks, and the history keeps its `[local]` commits. The last commit of every
+branch is "Point the dependencies at the forks".
 
-* `platforms: macOS 27`,
-* `swift-collections` pinned to exactly `1.6.0`, because swift-async-algorithms at `11645b8` calls `Optional.borrow()`,
-  which only 1.6.0 has,
-* swift-async-algorithms by revision with the `UnstableAsyncStreaming` trait,
-* `swift-nio-http2-state-machine`, a wrapper package inside the swift-nio-http2 worktree
-  (`Prototype/swift-nio-http2-state-machine`) that exposes only the `HTTP2StateMachine` target. The real package cannot
-  be used next to the released swift-nio-http2: both declare `NIOHTTP2` and `NIOHPACK`, and the branch declares
-  macOS 13 where swift-nio-extras needs 12.
+| Repository | Fork | Branch |
+|---|---|---|
+| swift-http-server | `fbusch/swift-http-server` | `fb-platform-http-server` |
+| swift-platform-executors | `fbusch/swift-platform-executors` | `fb-async-streaming-conformances` (manifest unchanged, it only had URL dependencies) |
+| swift-tls | `fbusch/swift-tls` | `fb-http-server-prototype` |
+| swift-binary-parsing | `fbusch/swift-binary-parsing` | `fb-http-server-prototype` |
+| swift-nio-http2 | `fbusch/swift-nio-http2` | `fb-http-server-prototype` (provenance only, nothing depends on it) |
+| swift-nio-http2-state-machine | `fbusch/swift-nio-http2-state-machine` (a new repository, not a fork) | `main` |
 
-The other worktrees point at each other by relative path as well. None of this works from a fresh clone. It has to be
-replaced by URL and branch dependencies on the forks before the branches can be pushed.
+`swift-nio-http2-state-machine` is a snapshot copy of `Sources/HTTP2StateMachine` with a root manifest. A SwiftPM
+dependency has to be a package at the repository root, and the package must not be called `swift-nio-http2`, because
+that identity collides with the released swift-nio-http2 that `NIOHTTPServer` pulls in. The `Prototype/` wrapper was
+removed from the swift-nio-http2 branch.
+
+SwiftPM accepts branch dependencies declared by `swift-tls` and the others because every package on the path from the
+root is itself resolved by branch. Verified by a fresh `git clone` of the fork into an empty directory: it resolves,
+builds `HTTPServerBenchmark` in release, passes the 19 `PlatformHTTPServerTests`, and serves 20 000 of 20 000 requests
+to `h2load`. The dependencies on swift-async-algorithms (revision `11645b8`) and swift-collections (`1.6.0`) use the
+public `github.com` URLs, which the Rio builders map to `swift-mirrors`. Both are present in the mirrors.
+
+The manifest of swift-http-server still contains `platforms: macOS 27` and the collections pin.
+
+## Performance workload
+
+`swift-platform-http-server` in `performance-workloads` (branch `fb-platform-http-server-workload`, not pushed). One
+binary with `--implementation platform|nio` that runs the handler of `swift-nio-http-server` for both servers, plus
+`--nio-pin-tasks`. Differences from the NIO workload are listed in its README. Findings:
+
+* The baseline for `PlatformHTTPServer` is `swift-nio-http-server` (`NIOHTTPServer`). `http2-swift-nio` is a raw NIO
+  pipeline.
+* swiftlang/swift#91981 is open, so no Swift base image contains it. The `Dockerfile` takes `SWIFT_TOOLCHAIN_URL`. The
+  container build and Linux are untested, and the Rio pipeline of the workload fails until a toolchain archive is
+  available.
+* `swift-nio-http-server` does not build on this Mac (QUIC dependency needs macOS 27 APIs), so the local comparison
+  uses `--implementation nio`. Local run, `-n 200000 -c 16 -m 10`, one thread, leaf and intermediate P-256 chain:
+  platform about 127 k req/s, NIO about 23.5 k req/s, NIO pinned about 25 k req/s.
 
 ## Building
 
@@ -157,12 +184,9 @@ timeouts, no connection limit; Linux is untested; `swift-format` was not run.
 
 ## Open work
 
-1. Push the compiling branches to forks in the `swift-mirrors` organisation of the internal GitHub, with manifests that
-   work from a fresh clone.
-2. Add a workload for the server to `performance-workloads`, set up so that it is measured the same way as the NIO
-   HTTP/2 case.
-3. Port the stack to the span based protocols (binary parsing, TLS and HTTP code, `swift-http-api-proposal`,
+1. Get a Linux toolchain with swiftlang/swift#91981, build the workload container, run it in the harness.
+2. Port the stack to the span based protocols (binary parsing, TLS and HTTP code, `swift-http-api-proposal`,
    `NIOHTTPServer`) and rerun the benchmarks.
-4. Land the upstream commits in the order: swift-binary-parsing, swift-async-algorithms, swift-platform-executors,
+3. Land the upstream commits in the order: swift-binary-parsing, swift-async-algorithms, swift-platform-executors,
    swift-tls and swift-nio-http2, swift-http-api-proposal, swift-http-server.
-5. Profile `NIOHTTPServer`, and work through the performance ideas above.
+4. Profile `NIOHTTPServer`, and work through the performance ideas above.
