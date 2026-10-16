@@ -32,6 +32,9 @@ public struct PlatformHTTPServerConfiguration: Sendable {
     /// The number of threads that run the connections of the server. `nil` uses one thread per core.
     public var threadCount: Int?
 
+    /// The mechanism that the threads of the server wait for events and perform their I/O with.
+    public var ioBackend: IOBackend
+
     /// The configuration of every HTTP/2 connection.
     public var http2: HTTP2ServerConfiguration
 
@@ -42,6 +45,7 @@ public struct PlatformHTTPServerConfiguration: Sendable {
         certificateChain: [Certificate],
         privateKey: Certificate.PrivateKey,
         threadCount: Int? = nil,
+        ioBackend: IOBackend = .platformDefault,
         http2: HTTP2ServerConfiguration = .init()
     ) {
         self.host = host
@@ -49,6 +53,25 @@ public struct PlatformHTTPServerConfiguration: Sendable {
         self.certificateChain = certificateChain
         self.privateKey = privateKey
         self.threadCount = threadCount
+        self.ioBackend = ioBackend
         self.http2 = http2
+    }
+
+    /// The mechanism that performs the I/O of the server.
+    ///
+    /// A backend that the platform or the build does not provide makes ``PlatformHTTPServer/serve(handler:)`` throw
+    /// ``PlatformHTTPServerError/unavailableIOBackend(_:)``.
+    public enum IOBackend: String, Sendable, Hashable, CaseIterable {
+        /// Lets the system decide, depending on the platform and the kernel version. On Linux this is `epoll`, or
+        /// `io_uring` if the `IOUring` trait is enabled and the kernel allows a ring.
+        case platformDefault
+
+        /// `epoll`, on Linux.
+        case epoll
+
+        /// `io_uring`, on Linux with the `IOUring` trait enabled. Creating the executors traps if the kernel does not
+        /// allow a ring, for example because the container runtime blocks `io_uring`. Use ``platformDefault`` to fall
+        /// back to `epoll` instead.
+        case ioUring
     }
 }

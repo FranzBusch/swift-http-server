@@ -44,6 +44,10 @@ var traits: Set<Trait> = [
         description: "Enables HTTP/3 support"
     ),
     .trait(
+        name: "IOUring",
+        description: "Lets PlatformHTTPServer perform its I/O with io_uring on Linux"
+    ),
+    .trait(
         name: "UnstableHTTPDatagrams",
         description: "Enables support for reading and writing unreliable HTTP datagrams"
     ),
@@ -129,7 +133,10 @@ let package = Package(
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-platform-executors.git",
             branch: "fb-async-streaming-conformances",
-            traits: ["ExperimentalAsyncStreaming"]
+            traits: [
+                "ExperimentalAsyncStreaming",
+                .trait(name: "ExperimentalIOUring", condition: .when(traits: ["IOUring"])),
+            ]
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-binary-parsing.git",

@@ -92,7 +92,8 @@ public struct PlatformHTTPServer: HTTPServer {
             let address = try Self.socketAddress(host: configuration.host, port: configuration.port)
             try await PThreadTaskExecutor.withExecutor(
                 name: "PlatformHTTPServer",
-                poolSize: configuration.threadCount
+                poolSize: configuration.threadCount,
+                ioBackend: try Self.ioBackend(for: configuration.ioBackend)
             ) { executor in
                 try await withTaskExecutorPreference(executor) {
                     let listener = try await TCPListener.bind(to: address)
@@ -298,6 +299,30 @@ public struct PlatformHTTPServer: HTTPServer {
     }
 
     // MARK: - Addresses
+
+    /// Maps the configured I/O backend to the one of the executors.
+    ///
+    /// - Throws: ``PlatformHTTPServerError/unavailableIOBackend(_:)`` if the platform or the build does not have it.
+    static func ioBackend(for backend: PlatformHTTPServerConfiguration.IOBackend) throws -> PThreadIOBackend {
+        switch backend {
+        case .platformDefault:
+            return .platformDefault
+
+        case .epoll:
+            #if canImport(Glibc)
+            return .epoll
+            #else
+            throw PlatformHTTPServerError.unavailableIOBackend(backend)
+            #endif
+
+        case .ioUring:
+            #if canImport(Glibc) && IOUring
+            return .ioUring
+            #else
+            throw PlatformHTTPServerError.unavailableIOBackend(backend)
+            #endif
+        }
+    }
 
     static func socketAddress(host: String, port: Int) throws -> SocketAddress {
         guard let port = UInt16(exactly: port) else {

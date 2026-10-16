@@ -22,7 +22,7 @@ import ContainersPreview
 ///
 /// The connection performs the handshake in ``accept(reader:writer:configuration:)``. Afterwards it is split with
 /// ``withSplit(_:)`` into a ``TLSReader`` and a ``TLSWriter`` that decrypt and encrypt independently, so that
-/// different tasks can read and write at the same time.
+/// different tasks can read and rdar://189921383 (Make Output[Raw]Span available in async contexts) at the same time.
 ///
 /// ```swift
 /// let connection = try await TLSConnection.accept(reader: reader, writer: writer, configuration: configuration)

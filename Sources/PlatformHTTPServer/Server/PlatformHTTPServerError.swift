@@ -36,4 +36,7 @@ public enum PlatformHTTPServerError: Error, Sendable {
 
     /// The configured host is not an IPv4 address.
     case invalidHost(String)
+
+    /// The selected I/O backend does not exist on this platform or in this build.
+    case unavailableIOBackend(PlatformHTTPServerConfiguration.IOBackend)
 }

@@ -58,6 +58,19 @@ export DYLD_LIBRARY_PATH=$TC/usr/lib/swift/macosx
 `swift-collections` has to resolve to 1.6.0. Releases 1.6.1 and later removed `Optional.borrow()`, which `AsyncStreaming`
 uses at the pinned swift-async-algorithms revision.
 
+## I/O backend
+
+`PlatformHTTPServerConfiguration.ioBackend` selects what the threads of the server wait for events and perform their I/O
+with: `.platformDefault` (the default; the platform decides), `.epoll` (Linux) and `.ioUring` (Linux). It maps to
+`PThreadIOBackend` of swift-platform-executors, see swiftlang/swift-platform-executors#68. `io_uring` needs the `IOUring`
+trait of this package, which enables the `ExperimentalIOUring` trait of swift-platform-executors and makes SwiftPM use
+the `fb-io-uring-sockets` branch of swift-system. Choosing a backend that the platform or the build does not have makes
+`serve` throw `PlatformHTTPServerError.unavailableIOBackend`. `.ioUring` traps instead if the kernel or the container
+runtime does not allow a ring, while `.platformDefault` falls back to `epoll`.
+
+The executors branch merges #68 and keeps the capacity of the reused event storage when clearing it, because that pull
+request relies on swift-collections 1.7.1 and this stack has to stay on 1.6.0.
+
 ## Comparing the servers
 
 ```bash
