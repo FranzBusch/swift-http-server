@@ -115,16 +115,26 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.37.0"),
         .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.35.1"),
         .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.44.0"),
-        // [prototype] The platform HTTP server is built on local worktrees of these packages. The nio-http2
-        // worktree only provides `HTTP2StateMachine`. Its directory name gives it a different package identity
-        // than the `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
-        .package(path: "../../../swift-nio-http2-worktrees/http-server-prototype/swift-nio-http2/Prototype/swift-nio-http2-state-machine"),
-        .package(path: "../../../../../swiftlang/swift-tls-worktrees/http-server-prototype/swift-tls"),
+        // [prototype] The platform HTTP server is built on branches of forks in the internal GitHub. The state
+        // machine package only provides `HTTP2StateMachine`. Its name gives it a different package identity than the
+        // `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
         .package(
-            path: "../../../../../swiftlang/swift-platform-executors-worktrees/http-server-prototype/swift-platform-executors",
+            url: "https://github.pie.apple.com/fbusch/swift-nio-http2-state-machine.git",
+            branch: "main"
+        ),
+        .package(
+            url: "https://github.pie.apple.com/fbusch/swift-tls.git",
+            branch: "fb-http-server-prototype"
+        ),
+        .package(
+            url: "https://github.pie.apple.com/fbusch/swift-platform-executors.git",
+            branch: "fb-async-streaming-conformances",
             traits: ["ExperimentalAsyncStreaming"]
         ),
-        .package(path: "../../../../../swiftlang/swift-binary-parsing-worktrees/http-server-prototype/swift-binary-parsing"),
+        .package(
+            url: "https://github.pie.apple.com/fbusch/swift-binary-parsing.git",
+            branch: "fb-http-server-prototype"
+        ),
         .package(
             url: "https://github.com/apple/swift-async-algorithms.git",
             revision: "11645b8feb9081ecf0f27b6f4d0821bd550fed01",
