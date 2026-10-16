@@ -120,9 +120,9 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.35.1"),
         .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.44.0"),
         // [prototype] The platform HTTP server is built on forks in the internal GitHub, pinned to revisions of their
-        // branches (bump them from the leaves up: binary-parsing, then the packages that depend on it, then this one). The state
-        // machine package only provides `HTTP2StateMachine`. Its name gives it a different package identity than the
-        // `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
+        // branches. Bump them from the leaves up: binary-parsing, then the packages that depend on it, then this one.
+        // The state machine package only provides `HTTP2StateMachine`. Its name gives it a different package identity
+        // than the `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-nio-http2-state-machine.git",
             revision: "e00faf20c78591d47bbbf47db9408e0c7738020b"
