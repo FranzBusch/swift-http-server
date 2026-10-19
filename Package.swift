@@ -133,7 +133,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-platform-executors.git",
-            revision: "4e381a45753145deca2f958ac290c44060d1c576",
+            revision: "672b0bf821c620e365e2eaedc59fd26082634d40",
             traits: [
                 "ExperimentalAsyncStreaming",
                 .trait(name: "ExperimentalIOUring", condition: .when(traits: ["IOUring"])),
