@@ -125,7 +125,7 @@ let package = Package(
         // than the `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-nio-http2-state-machine.git",
-            revision: "e00faf20c78591d47bbbf47db9408e0c7738020b"
+            revision: "24f057f60f1c1192b68695945daa893acaff6138"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-tls.git",
