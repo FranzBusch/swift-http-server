@@ -22,7 +22,7 @@ import Synchronization
 @available(anyAppleOS 27.0, *)
 final class HTTP2StreamRegistry: Sendable {
     private struct Entry {
-        var continuation: AsyncStream<HTTP2StreamEvent>.Continuation
+        var inbox: HTTP2StreamInbox
         var endStreamReceived: Bool
     }
 
@@ -66,11 +66,11 @@ final class HTTP2StreamRegistry: Sendable {
     func open(
         _ id: HTTP2StreamID,
         endStreamReceived: Bool,
-        continuation: AsyncStream<HTTP2StreamEvent>.Continuation
+        inbox: HTTP2StreamInbox
     ) {
         self.state.withLock {
             $0.lastPeerStreamID = id.value
-            $0.streams[id.value] = Entry(continuation: continuation, endStreamReceived: endStreamReceived)
+            $0.streams[id.value] = Entry(inbox: inbox, endStreamReceived: endStreamReceived)
         }
     }
 
@@ -94,9 +94,9 @@ final class HTTP2StreamRegistry: Sendable {
             case .reset:
                 entry.endStreamReceived = true
             }
-            entry.continuation.yield(event)
+            entry.inbox.yield(event)
             if entry.endStreamReceived {
-                entry.continuation.finish()
+                entry.inbox.finish()
             }
             state.streams[id.value] = entry
             return .delivered
@@ -106,7 +106,7 @@ final class HTTP2StreamRegistry: Sendable {
     /// Removes the stream, which ends its inbound events.
     func close(_ id: HTTP2StreamID) {
         let entry = self.state.withLock { $0.streams.removeValue(forKey: id.value) }
-        entry?.continuation.finish()
+        entry?.inbox.finish()
     }
 
     /// Ends the inbound events of all streams.
@@ -117,7 +117,7 @@ final class HTTP2StreamRegistry: Sendable {
             return entries
         }
         for entry in entries {
-            entry.continuation.finish()
+            entry.inbox.finish()
         }
     }
 }

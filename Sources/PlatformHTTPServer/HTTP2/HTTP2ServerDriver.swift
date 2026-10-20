@@ -357,16 +357,13 @@ public struct HTTP2ServerDriver: Sendable {
                     try await source.write(buffer: &outbound)
                     return nil
                 }
-                let (events, continuation) = AsyncStream<HTTP2StreamEvent>.makeStream()
-                registry.open(frame.streamID, endStreamReceived: payload.endStream, continuation: continuation)
-                if payload.endStream {
-                    continuation.finish()
-                }
+                let inbox = HTTP2StreamInbox(finished: payload.endStream)
+                registry.open(frame.streamID, endStreamReceived: payload.endStream, inbox: inbox)
                 return HTTP2Stream(
                     id: frame.streamID,
                     requestHeaders: headers,
                     requestEndStream: payload.endStream,
-                    inbound: HTTP2StreamInbound(iterator: events.makeAsyncIterator()),
+                    inbound: HTTP2StreamInbound(inbox: inbox),
                     outbound: HTTP2StreamOutbound(id: frame.streamID, source: source.clone())
                 )
             }

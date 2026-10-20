@@ -58,18 +58,18 @@ typealias HTTP2OutboundSource = MultiProducerSingleConsumerAsyncChannel<HTTP2Out
 
 /// The inbound side of a stream: what the peer sends after the request head.
 @available(anyAppleOS 27.0, *)
-public struct HTTP2StreamInbound: ~Copyable, @unchecked Sendable {
-    private var iterator: AsyncStream<HTTP2StreamEvent>.Iterator
+public struct HTTP2StreamInbound: ~Copyable, Sendable {
+    private let inbox: HTTP2StreamInbox
 
-    init(iterator: AsyncStream<HTTP2StreamEvent>.Iterator) {
-        self.iterator = iterator
+    init(inbox: HTTP2StreamInbox) {
+        self.inbox = inbox
     }
 
     /// The next event on the stream, or `nil` if the stream ended without more events.
     ///
     /// The stream ends when the connection closes, or when the stream reset or its last event was delivered.
     public mutating func next() async -> HTTP2StreamEvent? {
-        await self.iterator.next()
+        await self.inbox.next()
     }
 }
 
