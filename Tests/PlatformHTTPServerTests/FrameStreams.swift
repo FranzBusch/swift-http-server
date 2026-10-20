@@ -16,6 +16,7 @@ import AsyncStreaming
 import BasicContainers
 import ContainersPreview
 import HTTP2StateMachine
+import SpanPreview
 
 @testable import PlatformHTTPServer
 

@@ -14,7 +14,7 @@
 
 public import AsyncStreaming
 public import BasicContainers
-import ContainersPreview
+public import ContainersPreview
 import HTTP2StateMachine
 public import HTTPTypes
 import Synchronization

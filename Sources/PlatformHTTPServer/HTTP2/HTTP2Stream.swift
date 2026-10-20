@@ -14,6 +14,7 @@
 
 public import AsyncStreaming
 public import HTTP2StateMachine
+import SpanPreview
 
 public import BasicContainers
 import ContainersPreview

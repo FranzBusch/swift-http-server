@@ -107,7 +107,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/apple/swift-http-api-proposal.git",
-            .upToNextMinor(from: "0.2.0")
+            .upToNextMinor(from: "0.3.0")
         ),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),
         .package(url: "https://github.com/apple/swift-certificates.git", from: "1.19.3"),
@@ -125,15 +125,15 @@ let package = Package(
         // than the `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-nio-http2-state-machine.git",
-            revision: "24f057f60f1c1192b68695945daa893acaff6138"
+            revision: "33da7b28d4e2c27adc42853cf2b7bda7dc5d2500"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-tls.git",
-            revision: "b929b5aea715e4cb5898139b06730f0efcb502e5"
+            revision: "b98409e7b3b68fc9a39f31d05ae7c08dd73d4026"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-platform-executors.git",
-            revision: "672b0bf821c620e365e2eaedc59fd26082634d40",
+            revision: "b56bb706361a6d7635782f9e6b8dde25b94c1dc2",
             traits: [
                 "ExperimentalAsyncStreaming",
                 .trait(name: "ExperimentalIOUring", condition: .when(traits: ["IOUring"])),
@@ -141,16 +141,16 @@ let package = Package(
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-binary-parsing.git",
-            revision: "1ce476d539a03fb30d01485d0c8ed87d6cebde8a"
+            revision: "fd4c35980ecfb1a94d3550456b50b830cba98f9e"
         ),
         .package(
             url: "https://github.com/apple/swift-async-algorithms.git",
-            revision: "11645b8feb9081ecf0f27b6f4d0821bd550fed01",
+            exact: "1.1.7",
             traits: ["UnstableAsyncStreaming"]
         ),
         .package(
             url: "https://github.com/apple/swift-collections.git",
-            exact: "1.6.0",
+            exact: "1.7.1",
             traits: ["UnstableContainersPreview", "UnstableHashedContainers"]
         ),
         .package(url: "https://github.com/apple/swift-http-types.git", from: "1.5.1"),
@@ -237,6 +237,7 @@ let package = Package(
                 .product(name: "BasicContainers", package: "swift-collections"),
                 .product(name: "ContainersPreview", package: "swift-collections"),
                 .product(name: "DequeModule", package: "swift-collections"),
+                .product(name: "SpanPreview", package: "swift-collections"),
                 .product(name: "BinaryParsing", package: "swift-binary-parsing"),
                 .product(name: "BinaryParsingAsync", package: "swift-binary-parsing"),
                 .product(name: "BinarySerialization", package: "swift-binary-parsing"),
@@ -283,6 +284,7 @@ let package = Package(
                 .product(name: "AsyncStreaming", package: "swift-async-algorithms"),
                 .product(name: "BasicContainers", package: "swift-collections"),
                 .product(name: "ContainersPreview", package: "swift-collections"),
+                .product(name: "SpanPreview", package: "swift-collections"),
                 .product(name: "HTTPAPIs", package: "swift-http-api-proposal"),
                 .product(name: "HTTPTypes", package: "swift-http-types"),
                 .product(name: "PlatformExecutors", package: "swift-platform-executors"),
