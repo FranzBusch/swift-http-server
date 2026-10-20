@@ -125,11 +125,11 @@ let package = Package(
         // than the `swift-nio-http2` above, which keeps providing `NIOHTTP2` for the NIO server.
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-nio-http2-state-machine.git",
-            revision: "33da7b28d4e2c27adc42853cf2b7bda7dc5d2500"
+            revision: "f685563cbf0dd32ef2877a88d3f29aeaf9bdfe6e"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-tls.git",
-            revision: "b98409e7b3b68fc9a39f31d05ae7c08dd73d4026"
+            revision: "39ea5e6b6da392bb242a5f4b927f463977b91bc4"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-platform-executors.git",
@@ -141,7 +141,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-binary-parsing.git",
-            revision: "fd4c35980ecfb1a94d3550456b50b830cba98f9e"
+            revision: "b462b9b5a429b46b4e95e645e330e47a9a2446c8"
         ),
         .package(
             url: "https://github.com/apple/swift-async-algorithms.git",
