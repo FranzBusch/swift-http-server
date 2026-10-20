@@ -25,36 +25,77 @@ import Synchronization
 public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
     /// The state that survives the consumption of the sender, so that the server can check after the handler
     /// returned whether the response was completed.
+    ///
+    /// It owns the outbound side of the stream, which the sender and its body writer borrow for every send. After the
+    /// handler returned, the server resets the stream through it if needed. A second outbound side for that would
+    /// cost a producer of the outbound channel per stream.
     final class State: Sendable {
-        private let finished = Mutex(false)
+        private struct Storage: ~Copyable {
+            var outbound: HTTP2StreamOutbound?
+            var finished = false
+        }
+
+        private let storage: Mutex<Storage>
+
+        init(outbound: consuming HTTP2StreamOutbound) {
+            self.storage = Mutex(Storage(outbound: outbound))
+        }
 
         var finishedWriting: Bool {
-            self.finished.withLock { $0 }
+            self.storage.withLock { $0.finished }
         }
 
         func markFinished() {
-            self.finished.withLock { $0 = true }
+            self.storage.withLock { $0.finished = true }
+        }
+
+        /// Sends all outputs in order on the stream.
+        ///
+        /// The sender and its body writer are not `Sendable` and the server only sends after the handler returned,
+        /// so no two sends overlap.
+        func send(_ outputs: consuming UniqueArray<HTTP2StreamOutput>) async throws {
+            var outbound = self.takeOutbound()!
+            do {
+                try await outbound.send(outputs)
+            } catch {
+                self.putBack(outbound)
+                throw error
+            }
+            self.putBack(outbound)
+        }
+
+        /// Sends a single output on the stream.
+        func send(_ output: HTTP2StreamOutput) async throws {
+            var outputs = UniqueArray<HTTP2StreamOutput>(minimumCapacity: 1)
+            outputs.append(output)
+            try await self.send(outputs)
+        }
+
+        private func takeOutbound() -> HTTP2StreamOutbound? {
+            self.storage.withLock { $0.outbound.take() }
+        }
+
+        private func putBack(_ outbound: consuming HTTP2StreamOutbound) {
+            var outbound = Optional(outbound)
+            self.storage.withLock { swap(&$0.outbound, &outbound) }
         }
     }
 
-    private var outbound: HTTP2StreamOutbound
     private let state: State
 
-    init(outbound: consuming HTTP2StreamOutbound, state: State) {
-        self.outbound = outbound
+    init(state: State) {
         self.state = state
     }
 
     public mutating func sendInformational(_ response: HTTPResponse) async throws {
         precondition(response.status.kind == .informational, "sendInformational requires a 1xx response")
-        try await self.outbound.send(.headers(HPACKBridge.encodeResponseHead(response), endStream: false))
+        try await self.state.send(.headers(HPACKBridge.encodeResponseHead(response), endStream: false))
     }
 
     public consuming func send(_ response: HTTPResponse) async throws -> ResponseBodyWriter {
         precondition(response.status.kind != .informational, "send requires a non-1xx response")
-        var outbound = self.outbound
-        try await outbound.send(.headers(HPACKBridge.encodeResponseHead(response), endStream: false))
-        return ResponseBodyWriter(outbound: outbound, state: self.state)
+        try await self.state.send(.headers(HPACKBridge.encodeResponseHead(response), endStream: false))
+        return ResponseBodyWriter(state: self.state)
     }
 
     // This signature has to match the requirement label for label and type for type. A mismatch silently
@@ -75,7 +116,6 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
     @usableFromInline
     consuming func sendAndFinish(_ response: HTTPResponse, payload: [UInt8], trailer: HTTPFields?) async throws {
         precondition(response.status.kind != .informational, "sendAndFinish requires a non-1xx response")
-        var outbound = self.outbound
         let state = self.state
 
         let hasBody = !payload.isEmpty
@@ -92,7 +132,7 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
         if let trailer {
             outputs.append(.headers(HPACKBridge.encodeTrailers(trailer), endStream: true))
         }
-        try await outbound.send(outputs)
+        try await state.send(outputs)
         state.markFinished()
     }
 
@@ -124,11 +164,9 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
         public typealias WriteFailure = any Error
         public typealias FinalElement = HTTPFields?
 
-        private var outbound: HTTP2StreamOutbound
         private let state: State
 
-        fileprivate init(outbound: consuming HTTP2StreamOutbound, state: State) {
-            self.outbound = outbound
+        fileprivate init(state: State) {
             self.state = state
         }
 
@@ -143,7 +181,7 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
 
         @usableFromInline
         mutating func write(payload: [UInt8]) async throws(WriteFailure) {
-            try await self.outbound.send(.data(payload, endStream: false))
+            try await self.state.send(.data(payload, endStream: false))
         }
 
         @inlinable
@@ -157,7 +195,6 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
 
         @usableFromInline
         consuming func finish(payload: [UInt8], trailers: HTTPFields?) async throws(WriteFailure) {
-            var outbound = self.outbound
             let state = self.state
 
             var outputs = UniqueArray<HTTP2StreamOutput>(minimumCapacity: 2)
@@ -167,7 +204,7 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
             if let trailers {
                 outputs.append(.headers(HPACKBridge.encodeTrailers(trailers), endStream: true))
             }
-            try await outbound.send(outputs)
+            try await state.send(outputs)
             state.markFinished()
         }
     }

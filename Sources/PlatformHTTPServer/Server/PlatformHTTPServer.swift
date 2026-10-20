@@ -234,8 +234,6 @@ public struct PlatformHTTPServer: HTTPServer {
         let requestEndStream = stream.requestEndStream
         var outbound = stream.outbound
         let inbound = stream.inbound
-        // The sender takes the outbound side of the stream, so this one stays to reset the stream afterwards.
-        var resetter = outbound.clone()
 
         let request: HTTPRequest
         do {
@@ -246,15 +244,16 @@ public struct PlatformHTTPServer: HTTPServer {
                 case .unsupportedConnect: .refusedStream
                 default: .protocolError
                 }
-            try? await resetter.send(.reset(code))
+            try? await outbound.send(.reset(code))
             logger.debug("Malformed request", metadata: ["error": .string(String(describing: error))])
             return
         }
 
         let readerState = PlatformHTTPRequestBodyReader.State(finished: requestEndStream)
-        let senderState = PlatformHTTPResponseSender.State()
+        // The state owns the outbound side, so that the stream can be reset after the handler returned.
+        let senderState = PlatformHTTPResponseSender.State(outbound: outbound)
         let reader = PlatformHTTPRequestBodyReader(inbound: inbound, state: readerState)
-        let sender = PlatformHTTPResponseSender(outbound: outbound, state: senderState)
+        let sender = PlatformHTTPResponseSender(state: senderState)
 
         var handlerError: (any Error)? = nil
         do {
@@ -279,17 +278,17 @@ public struct PlatformHTTPServer: HTTPServer {
                 ]
             )
             if !senderState.finishedWriting {
-                try? await resetter.send(.reset(.internalError))
+                try? await senderState.send(.reset(.internalError))
             }
         } else if !senderState.finishedWriting {
             logger.warning(
                 "Handler returned without finishing the response",
                 metadata: ["stream-id": .stringConvertible(id.value)]
             )
-            try? await resetter.send(.reset(.internalError))
+            try? await senderState.send(.reset(.internalError))
         } else if !readerState.finishedReading {
             // The response is complete, but the client still sends the body. Tell it to stop.
-            try? await resetter.send(.reset(.noError))
+            try? await senderState.send(.reset(.noError))
         }
     }
 
