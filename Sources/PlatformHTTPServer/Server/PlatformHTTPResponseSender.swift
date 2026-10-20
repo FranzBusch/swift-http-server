@@ -59,16 +59,25 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
 
     // This signature has to match the requirement label for label and type for type. A mismatch silently
     // reinstates the default implementation that sends the head and the body in separate steps.
+    //
+    // The generic methods are inlinable and only drain the buffer, so that the caller specializes that part for its
+    // container. The rest does not depend on the container.
+    @inlinable
     public consuming func sendAndFinish<Buffer: RangeReplaceableContainer<UInt8> & ~Copyable>(
         _ response: HTTPResponse,
         buffer: inout Buffer,
         trailer: HTTPFields? = nil
     ) async throws where Buffer.Element: ~Copyable {
+        let payload = Self.drain(&buffer)
+        try await self.sendAndFinish(response, payload: payload, trailer: trailer)
+    }
+
+    @usableFromInline
+    consuming func sendAndFinish(_ response: HTTPResponse, payload: [UInt8], trailer: HTTPFields?) async throws {
         precondition(response.status.kind != .informational, "sendAndFinish requires a non-1xx response")
         var outbound = self.outbound
         let state = self.state
 
-        let payload = Self.drain(&buffer)
         let hasBody = !payload.isEmpty
         let hasTrailers = trailer != nil
 
@@ -88,7 +97,8 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
     }
 
     /// Moves the bytes of the container into an array.
-    fileprivate static func drain<Buffer: RangeReplaceableContainer<UInt8> & ~Copyable>(
+    @inlinable
+    static func drain<Buffer: RangeReplaceableContainer<UInt8> & ~Copyable>(
         _ buffer: inout Buffer
     ) -> [UInt8] where Buffer.Element: ~Copyable {
         guard buffer.count > 0 else { return [] }
@@ -122,20 +132,31 @@ public struct PlatformHTTPResponseSender: HTTPResponseSender, ~Copyable {
             self.state = state
         }
 
+        @inlinable
         public mutating func write<Buffer: RangeReplaceableContainer<UInt8> & ~Copyable>(
             buffer: inout Buffer
         ) async throws(WriteFailure) where Buffer.Element: ~Copyable {
             guard buffer.count > 0 else { return }
             let payload = PlatformHTTPResponseSender.drain(&buffer)
+            try await self.write(payload: payload)
+        }
+
+        @usableFromInline
+        mutating func write(payload: [UInt8]) async throws(WriteFailure) {
             try await self.outbound.send(.data(payload, endStream: false))
         }
 
+        @inlinable
         public consuming func finish<Buffer: RangeReplaceableContainer<UInt8> & ~Copyable>(
             buffer: inout Buffer,
             finalElement: consuming HTTPFields?
         ) async throws(WriteFailure) where Buffer.Element: ~Copyable {
             let payload = PlatformHTTPResponseSender.drain(&buffer)
-            let trailers = finalElement
+            try await self.finish(payload: payload, trailers: finalElement)
+        }
+
+        @usableFromInline
+        consuming func finish(payload: [UInt8], trailers: HTTPFields?) async throws(WriteFailure) {
             var outbound = self.outbound
             let state = self.state
 
