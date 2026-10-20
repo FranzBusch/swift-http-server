@@ -87,6 +87,11 @@ public struct PlatformHTTPServer: HTTPServer {
             privateKey: configuration.privateKey,
             alpnProtocols: ["h2"]
         )
+        // The connections only see this closure, not the handler type. The code of a connection then depends only
+        // on concrete types, so the compiler specializes it instead of instantiating every layer at runtime.
+        let onStream: @Sendable (consuming HTTP2Stream) async -> Void = { stream in
+            await Self.handleStream(stream, handler: handler, logger: logger)
+        }
 
         do {
             let address = try Self.socketAddress(host: configuration.host, port: configuration.port)
@@ -113,7 +118,7 @@ public struct PlatformHTTPServer: HTTPServer {
                                     let connection = box.take()!
                                     await Self.handleConnection(
                                         connection,
-                                        handler: handler,
+                                        onStream: onStream,
                                         tlsConfiguration: tlsConfiguration,
                                         http2Configuration: configuration.http2,
                                         logger: logger
@@ -140,24 +145,19 @@ public struct PlatformHTTPServer: HTTPServer {
     /// Runs TLS and HTTP/2 on an accepted connection and closes it afterwards.
     ///
     /// Errors are logged: one failing peer must not stop the server.
-    private static func handleConnection<Handler: HTTPServerRequestHandler>(
+    private static func handleConnection(
         _ connection: consuming TCPConnection,
-        handler: Handler,
+        onStream: @escaping @Sendable (consuming HTTP2Stream) async -> Void,
         tlsConfiguration: ServerTLSConfiguration,
         http2Configuration: HTTP2ServerConfiguration,
         logger: Logger
-    ) async
-    where
-        Handler.RequestContext == PlatformHTTPRequestContext,
-        Handler.Reader == PlatformHTTPRequestBodyReader,
-        Handler.ResponseSender == PlatformHTTPResponseSender
-    {
+    ) async {
         do {
             try await connection.withOwnedSplit { readHalf, writeHalf in
                 try await Self.serveConnection(
                     reader: readHalf,
                     writer: writeHalf,
-                    handler: handler,
+                    onStream: onStream,
                     tlsConfiguration: tlsConfiguration,
                     http2Configuration: http2Configuration,
                     logger: logger
@@ -172,12 +172,11 @@ public struct PlatformHTTPServer: HTTPServer {
     /// Serves HTTP/2 over TLS on a pair of byte streams.
     static func serveConnection<
         Reader: AsyncReader & Sendable & ~Copyable & ~Escapable,
-        Writer: AsyncWriter & Sendable & ~Copyable & ~Escapable,
-        Handler: HTTPServerRequestHandler
+        Writer: AsyncWriter & Sendable & ~Copyable & ~Escapable
     >(
         reader: consuming Reader,
         writer: consuming Writer,
-        handler: Handler,
+        onStream: @escaping @Sendable (consuming HTTP2Stream) async -> Void,
         tlsConfiguration: ServerTLSConfiguration,
         http2Configuration: HTTP2ServerConfiguration,
         logger: Logger
@@ -186,10 +185,7 @@ public struct PlatformHTTPServer: HTTPServer {
         Reader.ReadElement == UInt8,
         Reader.FinalElement == Void,
         Writer.WriteElement == UInt8,
-        Writer.FinalElement == Void,
-        Handler.RequestContext == PlatformHTTPRequestContext,
-        Handler.Reader == PlatformHTTPRequestBodyReader,
-        Handler.ResponseSender == PlatformHTTPResponseSender
+        Writer.FinalElement == Void
     {
         let tls = try await TLSConnection.accept(
             reader: reader,
@@ -211,10 +207,9 @@ public struct PlatformHTTPServer: HTTPServer {
             try await connection.withHTTP2Frames { frameReader, frameWriter in
                 try await HTTP2ServerDriver(configuration: http2Configuration).run(
                     reader: frameReader,
-                    writer: frameWriter
-                ) { stream in
-                    await Self.handleStream(stream, handler: handler, logger: logger)
-                }
+                    writer: frameWriter,
+                    onStream: onStream
+                )
             }
         }
     }
