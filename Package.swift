@@ -117,7 +117,11 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-quic-helpers.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/apple/swift-nio-http3.git", .upToNextMinor(from: "0.3.0")),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.37.0"),
-        .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.35.1"),
+        // [prototype] A fork that accepts swift-crypto 5, whose in-place AES-GCM the TLS records use.
+        .package(
+            url: "https://github.pie.apple.com/fbusch/swift-nio-extras.git",
+            revision: "dffb028f7ccce038498115c46d06ee3694246496"
+        ),
         .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.44.0"),
         // [prototype] The platform HTTP server is built on forks in the internal GitHub, pinned to revisions of their
         // branches. Bump them from the leaves up: binary-parsing, then the packages that depend on it, then this one.
@@ -129,7 +133,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-tls.git",
-            revision: "39ea5e6b6da392bb242a5f4b927f463977b91bc4"
+            revision: "63a5fa9c54a04f409f89c1b4fef4eabb1c5fc51a"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-platform-executors.git",
@@ -154,7 +158,7 @@ let package = Package(
             traits: ["UnstableContainersPreview", "UnstableHashedContainers"]
         ),
         .package(url: "https://github.com/apple/swift-http-types.git", from: "1.5.1"),
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.5.1"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "5.0.0"),
         .package(url: "https://github.com/apple/swift-asn1.git", from: "1.5.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         .package(url: "https://github.com/apple/swift-configuration.git", from: "1.2.0", traits: []),
