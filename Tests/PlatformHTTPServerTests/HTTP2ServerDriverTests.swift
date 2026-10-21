@@ -24,17 +24,23 @@ struct HTTP2ServerDriverTests {
     @available(anyAppleOS 27.0, *)
     private func withDriver(
         configuration: HTTP2ServerConfiguration = .init(),
+        driverFails: Bool = false,
         handler: @escaping @Sendable (consuming HTTP2Stream) async -> Void,
         client body: @escaping @Sendable (TestFrameClient) async throws -> Void
     ) async throws {
         let client = TestFrameClient()
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
-                try await HTTP2ServerDriver(configuration: configuration).run(
-                    reader: client.makeServerReader(),
-                    writer: client.makeServerWriter(),
-                    onStream: handler
-                )
+                do {
+                    try await HTTP2ServerDriver(configuration: configuration).run(
+                        reader: client.makeServerReader(),
+                        writer: client.makeServerWriter(),
+                        onStream: handler
+                    )
+                    #expect(!driverFails, "The driver returned without the expected failure")
+                } catch {
+                    guard driverFails else { throw error }
+                }
             }
             try await body(client)
             client.close()
@@ -170,6 +176,66 @@ struct HTTP2ServerDriverTests {
             }
             #expect(received == size)
             #expect(largestFrame <= 16384)
+        }
+    }
+
+    @available(anyAppleOS 27.0, *)
+    @Test("Window updates that only replace the sent data keep a connection with the largest window usable")
+    func connectionWindowIsReplenished() async throws {
+        let size = 100_000
+        try await self.withDriver(handler: Self.respond(with: [UInt8](repeating: 7, count: size))) { client in
+            client.sendSettings()
+            // Raises the connection window to the largest one that HTTP/2 allows.
+            client.send(
+                HTTP2Frame(
+                    streamID: .connectionStream,
+                    payload: .windowUpdate(windowSizeIncrement: UInt32(Int32.max) - 65535)
+                )
+            )
+
+            for id in [UInt32(1), 3] {
+                client.sendRequest(id: id)
+                var sawEnd = false
+                while !sawEnd, let frame = await client.nextFrame() {
+                    if case .goAway(let goAway) = frame.payload {
+                        Issue.record("The server closed the connection with \(goAway.errorCode)")
+                        return
+                    }
+                    guard case .data(let data) = frame.payload, frame.streamID.value == id else { continue }
+                    sawEnd = data.endStream
+                    guard !data.data.isEmpty else { continue }
+                    // Returns exactly the credit that the data used, so the window never exceeds the maximum.
+                    let increment = UInt32(data.data.count)
+                    client.send(
+                        HTTP2Frame(streamID: .connectionStream, payload: .windowUpdate(windowSizeIncrement: increment))
+                    )
+                    client.send(
+                        HTTP2Frame(streamID: HTTP2StreamID(id), payload: .windowUpdate(windowSizeIncrement: increment))
+                    )
+                }
+                #expect(sawEnd)
+            }
+        }
+    }
+
+    @available(anyAppleOS 27.0, *)
+    @Test("A window update beyond the largest window is a connection error")
+    func connectionWindowOverflow() async throws {
+        try await self.withDriver(driverFails: true, handler: { _ in }) { client in
+            client.sendSettings()
+            client.send(
+                HTTP2Frame(
+                    streamID: .connectionStream,
+                    payload: .windowUpdate(windowSizeIncrement: UInt32(Int32.max))
+                )
+            )
+            while let frame = await client.nextFrame() {
+                if case .goAway(let goAway) = frame.payload {
+                    #expect(goAway.errorCode == .flowControlError)
+                    return
+                }
+            }
+            Issue.record("The server did not close the connection")
         }
     }
 

@@ -39,7 +39,13 @@ struct HTTP2OutboundState {
     private var streams: [UInt32: StreamState] = [:]
 
     /// Applies a frame to the state and appends the frames that can be sent now.
-    mutating func process(_ outbound: HTTP2OutboundFrame, into frames: inout UniqueArray<HTTP2Frame>) {
+    ///
+    /// - Throws: A failure of the connection if the peer raised the window of the connection above the largest one
+    ///   (RFC 9113, section 6.9.1). Only this side can tell, because only it knows how much data it sent.
+    mutating func process(
+        _ outbound: HTTP2OutboundFrame,
+        into frames: inout UniqueArray<HTTP2Frame>
+    ) throws(HTTP2ConnectionFailure) {
         switch outbound {
         case .control(let frame):
             frames.append(frame)
@@ -70,7 +76,11 @@ struct HTTP2OutboundState {
 
         case .peerWindowUpdate(let id, let increment):
             if id == .connectionStream {
-                self.connectionWindow += Int(increment)
+                let window = self.connectionWindow + Int(increment)
+                guard window <= Int(Int32.max) else {
+                    throw HTTP2ConnectionFailure(code: .flowControlError, reason: "Connection window overflow")
+                }
+                self.connectionWindow = window
                 self.flushQueues(into: &frames)
             } else if self.streams[id.value] != nil {
                 self.streams[id.value]?.window += Int(increment)

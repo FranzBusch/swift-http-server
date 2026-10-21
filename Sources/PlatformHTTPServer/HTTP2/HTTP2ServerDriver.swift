@@ -86,7 +86,12 @@ public struct HTTP2ServerDriver: Sendable {
                     handler: handler
                 )
             } _: {
-                try await Self.writeSide(writer: &writer, channel: &channel, configuration: configuration)
+                try await Self.writeSide(
+                    writer: &writer,
+                    channel: &channel,
+                    registry: registry,
+                    configuration: configuration
+                )
             }
         }
     }
@@ -157,7 +162,7 @@ public struct HTTP2ServerDriver: Sendable {
         if let failure {
             // Tell the client why the connection ends. This is best effort: the writing side might be gone.
             var goAway = UniqueArray<HTTP2OutboundFrame>()
-            let code = (failure as? HTTP2ConnectionFailure)?.code ?? .internalError
+            let code = Self.connectionFailure(in: failure)?.code ?? .internalError
             goAway.append(
                 .control(
                     HTTP2Frame(
@@ -271,14 +276,8 @@ public struct HTTP2ServerDriver: Sendable {
             guard increment > 0 else {
                 throw HTTP2ConnectionFailure(code: .protocolError, reason: "WINDOW_UPDATE without increment")
             }
-            if frame.streamID == .connectionStream {
-                switch state.connection.connectionWindowUpdate(by: increment) {
-                case .updated:
-                    break
-                case .error:
-                    throw HTTP2ConnectionFailure(code: .flowControlError, reason: "Connection window overflow")
-                }
-            }
+            // The writing side applies the increment and detects a window that grows too large. Only it knows how
+            // much data was sent, so a window that this side tracked would only ever grow until it overflows.
             var outbound = UniqueArray<HTTP2OutboundFrame>(minimumCapacity: 1)
             outbound.append(.peerWindowUpdate(frame.streamID, increment))
             try await source.write(buffer: &outbound)
@@ -395,6 +394,7 @@ public struct HTTP2ServerDriver: Sendable {
     >(
         writer: inout FrameWriter?,
         channel: inout MultiProducerSingleConsumerAsyncChannel<HTTP2OutboundFrame, Void, any Error>,
+        registry: HTTP2StreamRegistry,
         configuration: HTTP2ServerConfiguration
     ) async throws {
         var state = HTTP2OutboundState()
@@ -406,10 +406,27 @@ public struct HTTP2ServerDriver: Sendable {
         try await writer!.write(buffer: &frames)
 
         var ended = false
-        while !ended {
+        var failure: HTTP2ConnectionFailure? = nil
+        while !ended && failure == nil {
             ended = try await channel.read { items, finalElement in
                 while let item = items.popFirst() {
-                    state.process(item, into: &frames)
+                    do throws(HTTP2ConnectionFailure) {
+                        try state.process(item, into: &frames)
+                    } catch {
+                        failure = error
+                        break
+                    }
+                }
+                if let failure {
+                    // The frames before the violation still go out, then the client learns why the connection ends.
+                    frames.append(
+                        HTTP2Frame(
+                            streamID: .connectionStream,
+                            payload: .goAway(
+                                .init(lastStreamID: HTTP2StreamID(registry.lastPeerStreamID), errorCode: failure.code)
+                            )
+                        )
+                    )
                 }
                 if frames.count > 0 {
                     try await writer!.write(buffer: &frames)
@@ -418,7 +435,25 @@ public struct HTTP2ServerDriver: Sendable {
             }
         }
 
+        if let failure {
+            try? await writer.take()!.finish()
+            throw failure
+        }
         try await writer.take()!.finish()
+    }
+
+    /// The failure of the connection that ended the reading side, also if a reader wrapped it.
+    private static func connectionFailure(in error: any Error) -> HTTP2ConnectionFailure? {
+        if let failure = error as? HTTP2ConnectionFailure {
+            return failure
+        }
+        if let either = error as? EitherError<any Error, any Error> {
+            switch either {
+            case .first(let error), .second(let error):
+                return Self.connectionFailure(in: error)
+            }
+        }
+        return nil
     }
 }
 
