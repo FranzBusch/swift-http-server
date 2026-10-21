@@ -41,6 +41,7 @@ struct HTTP3EndToEndTests {
     @available(anyAppleOS 27.0, *)
     private static func withServer<Handler: HTTPServerRequestHandler, Result: Sendable>(
         handler: Handler,
+        http2: Bool = true,
         client: @escaping @Sendable (Int) async throws -> Result
     ) async throws -> Result
     where
@@ -56,6 +57,7 @@ struct HTTP3EndToEndTests {
                 certificateChain: tls.certificateChain,
                 privateKey: tls.privateKey,
                 threadCount: 1,
+                http2: http2 ? .init() : nil,
                 http3: .init()
             ),
             logger: Logger(label: "http3-end-to-end-test")
@@ -267,5 +269,57 @@ struct HTTP3EndToEndTests {
         }
         #expect(responses.count == 50)
         #expect(responses.allSatisfy { $0.status == "200" && $0.body.count == 2048 })
+    }
+
+    @available(anyAppleOS 27.0, *)
+    @Test("A server with HTTP/3 only serves over QUIC and does not listen on TCP")
+    func http3Only() async throws {
+        let handler = HTTPServerClosureRequestHandler<
+            PlatformHTTPRequestContext, PlatformHTTPRequestBodyReader, PlatformHTTPResponseSender
+        > { _, _, _, responseSender in
+            var body = UniqueArray<UInt8>(copying: Array("only h3".utf8))
+            try await responseSender.sendAndFinish(HTTPResponse(status: .ok), buffer: &body, trailer: nil)
+        }
+        let (responses, tcpRefused) = try await Self.withServer(handler: handler, http2: false) { port in
+            let responses = try await Self.requests(port: port)
+            var tcpRefused = false
+            do {
+                let connection = try await TCPConnection.connect(to: .v4(.init(address: .loopback, port: UInt16(port))))
+                try await connection.close()
+            } catch {
+                tcpRefused = true
+            }
+            return (responses, tcpRefused)
+        }
+        #expect(responses.first?.status == "200")
+        #expect(responses.first.map { String(decoding: $0.body, as: UTF8.self) } == "only h3")
+        #expect(tcpRefused)
+    }
+
+    @available(anyAppleOS 27.0, *)
+    @Test("A server without any HTTP version fails to start")
+    func noHTTPVersion() async throws {
+        let tls = try makeServerTLSConfiguration()
+        let server = PlatformHTTPServer(
+            configuration: .init(
+                host: "127.0.0.1",
+                port: 0,
+                certificateChain: tls.certificateChain,
+                privateKey: tls.privateKey,
+                threadCount: 1,
+                http2: nil,
+                http3: nil
+            ),
+            logger: Logger(label: "http3-end-to-end-test")
+        )
+        let handler = HTTPServerClosureRequestHandler<
+            PlatformHTTPRequestContext, PlatformHTTPRequestBodyReader, PlatformHTTPResponseSender
+        > { _, _, _, _ in }
+        await #expect {
+            try await server.serve(handler: handler)
+        } throws: { error in
+            if case .noHTTPVersion = error as? PlatformHTTPServerError { return true }
+            return false
+        }
     }
 }

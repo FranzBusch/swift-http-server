@@ -102,71 +102,41 @@ public struct PlatformHTTPServer: HTTPServer {
                 ioBackend: try Self.ioBackend(for: configuration.ioBackend)
             ) { executor in
                 try await withTaskExecutorPreference(executor) {
-                    let listener = try await TCPListener.bind(to: address)
-                    let boundPort = try listener.localAddress.port
-                    logger.info(
-                        "HTTP/2 server listening",
-                        metadata: ["host": .string(configuration.host), "port": .stringConvertible(boundPort)]
-                    )
-
-                    // HTTP/3 binds the same port for UDP, so that the port that is reported serves both.
-                    var udpSocket: UDPSocket? = nil
-                    if configuration.http3 != nil {
-                        let udpAddress = try Self.socketAddress(host: configuration.host, port: Int(boundPort))
-                        udpSocket = try await UDPSocket.bind(to: udpAddress)
-                        logger.info(
-                            "HTTP/3 server listening",
-                            metadata: ["host": .string(configuration.host), "port": .stringConvertible(boundPort)]
+                    if let http2 = configuration.http2 {
+                        try await Self.serveTCP(
+                            address: address,
+                            http2: http2,
+                            configuration: configuration,
+                            tlsConfiguration: tlsConfiguration,
+                            onStream: onStream,
+                            portContinuation: portContinuation,
+                            logger: logger
                         )
-                    }
-                    portContinuation.yield(Int(boundPort))
-
-                    do {
-                        try await withThrowingDiscardingTaskGroup { group in
-                            if let http3 = configuration.http3, let socket = udpSocket.take() {
-                                var box: UDPSocket? = consume socket
-                                group.addTask {
-                                    let socket = box.take()!
-                                    let quicTLS = ServerTLSConfiguration(
-                                        certificateChain: configuration.certificateChain,
-                                        privateKey: configuration.privateKey,
-                                        alpnProtocols: ["h3"]
-                                    )
-                                    do {
-                                        try await Self.serveHTTP3(
-                                            socket: socket,
-                                            configuration: http3,
-                                            tlsConfiguration: try quicTLS.makeHandshakeConfiguration(),
-                                            onStream: onStream,
-                                            logger: logger
-                                        )
-                                    } catch {
-                                        try? await socket.close()
-                                        throw error
-                                    }
-                                    try await socket.close()
-                                }
-                            }
-                            while !Task.isCancelled {
-                                let connection = try await listener.accept()
-                                var box: TCPConnection? = consume connection
-                                group.addTask {
-                                    let connection = box.take()!
-                                    await Self.handleConnection(
-                                        connection,
-                                        onStream: onStream,
-                                        tlsConfiguration: tlsConfiguration,
-                                        http2Configuration: configuration.http2,
-                                        logger: logger
-                                    )
-                                }
-                            }
+                    } else if let http3 = configuration.http3 {
+                        // HTTP/3 only: no TCP listener, the UDP socket reports the port.
+                        let socket = try await UDPSocket.bind(to: address)
+                        do {
+                            let boundPort = try socket.localAddress.port
+                            logger.info(
+                                "HTTP/3 server listening",
+                                metadata: ["host": .string(configuration.host), "port": .stringConvertible(boundPort)]
+                            )
+                            portContinuation.yield(Int(boundPort))
+                            try await Self.serveHTTP3(
+                                socket: socket,
+                                configuration: http3,
+                                tlsConfiguration: try Self.quicTLSConfiguration(configuration),
+                                onStream: onStream,
+                                logger: logger
+                            )
+                        } catch {
+                            try? await socket.close()
+                            throw error
                         }
-                    } catch {
-                        try? await listener.close()
-                        throw error
+                        try await socket.close()
+                    } else {
+                        throw PlatformHTTPServerError.noHTTPVersion
                     }
-                    try await listener.close()
                 }
             }
         } catch {
@@ -174,6 +144,92 @@ public struct PlatformHTTPServer: HTTPServer {
             throw error
         }
         portContinuation.finish()
+    }
+
+    /// Serves HTTP/2 on a TCP listener, and HTTP/3 on a UDP socket of the same port if it is enabled.
+    private static func serveTCP(
+        address: SocketAddress,
+        http2: HTTP2ServerConfiguration,
+        configuration: PlatformHTTPServerConfiguration,
+        tlsConfiguration: ServerTLSConfiguration,
+        onStream: @escaping @Sendable (consuming HTTP2Stream) async -> Void,
+        portContinuation: AsyncThrowingStream<Int, any Error>.Continuation,
+        logger: Logger
+    ) async throws {
+        let listener = try await TCPListener.bind(to: address)
+        let boundPort: UInt16
+        do {
+            boundPort = try listener.localAddress.port
+        } catch {
+            try? await listener.close()
+            throw error
+        }
+        logger.info(
+            "HTTP/2 server listening",
+            metadata: ["host": .string(configuration.host), "port": .stringConvertible(boundPort)]
+        )
+
+        do {
+            try await withThrowingDiscardingTaskGroup { group in
+                if let http3 = configuration.http3 {
+                    // HTTP/3 binds the same port for UDP, so that the port that is reported serves both.
+                    let udpAddress = try Self.socketAddress(host: configuration.host, port: Int(boundPort))
+                    let socket = try await UDPSocket.bind(to: udpAddress)
+                    logger.info(
+                        "HTTP/3 server listening",
+                        metadata: ["host": .string(configuration.host), "port": .stringConvertible(boundPort)]
+                    )
+                    var box: UDPSocket? = consume socket
+                    group.addTask {
+                        let socket = box.take()!
+                        do {
+                            try await Self.serveHTTP3(
+                                socket: socket,
+                                configuration: http3,
+                                tlsConfiguration: try Self.quicTLSConfiguration(configuration),
+                                onStream: onStream,
+                                logger: logger
+                            )
+                        } catch {
+                            try? await socket.close()
+                            throw error
+                        }
+                        try await socket.close()
+                    }
+                }
+                portContinuation.yield(Int(boundPort))
+
+                while !Task.isCancelled {
+                    let connection = try await listener.accept()
+                    var box: TCPConnection? = consume connection
+                    group.addTask {
+                        let connection = box.take()!
+                        await Self.handleConnection(
+                            connection,
+                            onStream: onStream,
+                            tlsConfiguration: tlsConfiguration,
+                            http2Configuration: http2,
+                            logger: logger
+                        )
+                    }
+                }
+            }
+        } catch {
+            try? await listener.close()
+            throw error
+        }
+        try await listener.close()
+    }
+
+    /// The handshake configuration of QUIC, which only offers `h3`.
+    private static func quicTLSConfiguration(
+        _ configuration: PlatformHTTPServerConfiguration
+    ) throws -> ServerHandshakeConfiguration {
+        try ServerTLSConfiguration(
+            certificateChain: configuration.certificateChain,
+            privateKey: configuration.privateKey,
+            alpnProtocols: ["h3"]
+        ).makeHandshakeConfiguration()
     }
 
     // MARK: - Connections

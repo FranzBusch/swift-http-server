@@ -35,13 +35,17 @@ public struct PlatformHTTPServerConfiguration: Sendable {
     /// The mechanism that the threads of the server wait for events and perform their I/O with.
     public var ioBackend: IOBackend
 
-    /// The configuration of every HTTP/2 connection.
-    public var http2: HTTP2ServerConfiguration
-
-    /// The configuration of HTTP/3, or `nil` to serve HTTP/2 only.
+    /// The configuration of HTTP/2, or `nil` to not serve HTTP/2.
     ///
-    /// With HTTP/3, the server also binds a UDP socket to the address and port of the TCP listener and serves
-    /// HTTP/3 over QUIC on it.
+    /// With HTTP/2, the server binds a TCP listener to the address and port and serves HTTP/2 over TLS on it.
+    public var http2: HTTP2ServerConfiguration?
+
+    /// The configuration of HTTP/3, or `nil` to not serve HTTP/3.
+    ///
+    /// With HTTP/3, the server binds a UDP socket to the address and serves HTTP/3 over QUIC on it. With HTTP/2 as
+    /// well, the UDP socket gets the port of the TCP listener.
+    ///
+    /// At least one of ``http2`` and ``http3`` has to be set.
     public var http3: HTTP3ServerConfiguration?
 
     /// Creates a configuration.
@@ -52,7 +56,7 @@ public struct PlatformHTTPServerConfiguration: Sendable {
         privateKey: Certificate.PrivateKey,
         threadCount: Int? = nil,
         ioBackend: IOBackend = .platformDefault,
-        http2: HTTP2ServerConfiguration = .init(),
+        http2: HTTP2ServerConfiguration? = .init(),
         http3: HTTP3ServerConfiguration? = nil
     ) {
         self.host = host

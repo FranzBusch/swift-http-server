@@ -39,4 +39,7 @@ public enum PlatformHTTPServerError: Error, Sendable {
 
     /// The selected I/O backend does not exist on this platform or in this build.
     case unavailableIOBackend(PlatformHTTPServerConfiguration.IOBackend)
+
+    /// The configuration enables neither HTTP/2 nor HTTP/3.
+    case noHTTPVersion
 }
