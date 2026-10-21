@@ -187,6 +187,7 @@ enum QUICServerEndpoint {
             _ = span.finalize(for: buffer)
             guard count > 0 else { continue }
             let bytes = Array(UnsafeRawBufferPointer(rebasing: buffer[0..<count]))
+            logger.trace("Received a datagram", metadata: ["bytes": .stringConvertible(count), "peer": .string("\(sender)")])
 
             guard let destination = Self.destinationConnectionID(of: bytes, shortHeaderLength: configuration.connectionIDLength)
             else { continue }
@@ -237,7 +238,11 @@ enum QUICServerEndpoint {
         let raw = bytes.span.bytes
         var input = ParserSpan(raw)
         guard let packet = try? QUICProtectedPacket(parsing: &input, shortHeaderConnectionIDLength: configuration.connectionIDLength)
-        else { return }
+        else {
+            logger.debug("Dropped a datagram that does not parse", metadata: ["bytes": .stringConvertible(bytes.count)])
+            return
+        }
+        logger.debug("Datagram for an unknown connection", metadata: ["header": .string("\(packet.header)")])
 
         switch packet.header {
         case .long(let header) where header.type == .initial:

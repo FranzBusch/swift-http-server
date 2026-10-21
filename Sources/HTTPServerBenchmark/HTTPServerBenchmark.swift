@@ -70,6 +70,9 @@ struct HTTPServerBenchmark: AsyncParsableCommand {
     @Flag(help: "Run the tasks of NIOHTTPServer on its event loop instead of the global executor.")
     var nioPinTasks = false
 
+    @Flag(help: "Also serve HTTP/3 over QUIC on the same UDP port (platform implementation only).")
+    var http3 = false
+
     @Option(help: "The log level: trace, debug, info, notice, warning, error or critical.")
     var logLevel: String = "info"
 
@@ -122,7 +125,8 @@ struct HTTPServerBenchmark: AsyncParsableCommand {
                     port: self.port,
                     certificateChain: [certificate.certificate],
                     privateKey: certificate.privateKey,
-                    threadCount: self.threads
+                    threadCount: self.threads,
+                    http3: self.http3 ? .init() : nil
                 ),
                 logger: logger
             )

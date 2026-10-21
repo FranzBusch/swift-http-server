@@ -253,10 +253,12 @@ struct QUICFrameReader: AsyncReader, ~Copyable, Sendable {
         }
     }
 
-    /// Whether the connection ended without a failure: an application close of either side.
+    /// Whether the connection ended without a failure: an application close of either side, or NO_ERROR of the peer.
     private static func isGraceful(_ error: QUICConnectionError) -> Bool {
         switch error.kind {
         case .peerApplicationClose, .localApplicationClose: true
+        // A peer that closes with NO_ERROR, for example a client that is done.
+        case .peerTransportError(let code): code == QUICTransportErrorCode.noError.rawValue
         default: false
         }
     }
