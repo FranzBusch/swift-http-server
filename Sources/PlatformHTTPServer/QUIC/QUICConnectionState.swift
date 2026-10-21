@@ -402,7 +402,12 @@ struct QUICConnectionState: ~Copyable {
                     reason: "The peer does not allow stream \(streamID) yet"
                 )
             }
-            self.streams[streamID] = self.makeLocalStream(streamID)
+            // Opening a stream opens the lower streams of the same type too (RFC 9000, section 3.2).
+            let base = streamID & 0x03
+            for index in self.localStreamsOpened[type]...(streamID >> 2) {
+                let id = index << 2 | base
+                self.streams[id] = self.makeLocalStream(id)
+            }
             self.localStreamsOpened[type] = (streamID >> 2) + 1
         }
         guard var stream = self.streams[streamID], var buffer = stream.send, !stream.isReset else {
@@ -1640,3 +1645,7 @@ struct QUICConnectionState: ~Copyable {
         return datagram.isEmpty ? nil : datagram
     }
 }
+
+// The state owns its values uniquely, and the handshake state machines of swift-tls only lack the annotation.
+@available(anyAppleOS 27.0, *)
+extension QUICConnectionState: @unchecked Sendable {}

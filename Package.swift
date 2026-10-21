@@ -241,6 +241,7 @@ let package = Package(
                 .product(name: "BasicContainers", package: "swift-collections"),
                 .product(name: "ContainersPreview", package: "swift-collections"),
                 .product(name: "DequeModule", package: "swift-collections"),
+                .product(name: "HeapModule", package: "swift-collections"),
                 .product(name: "SpanPreview", package: "swift-collections"),
                 .product(name: "BinaryParsing", package: "swift-binary-parsing"),
                 .product(name: "BinaryParsingAsync", package: "swift-binary-parsing"),
