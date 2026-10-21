@@ -133,7 +133,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-tls.git",
-            revision: "63a5fa9c54a04f409f89c1b4fef4eabb1c5fc51a"
+            revision: "d85e2fb9e335e87f11d0bddcd80aa0a41361d56b"
         ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-platform-executors.git",
