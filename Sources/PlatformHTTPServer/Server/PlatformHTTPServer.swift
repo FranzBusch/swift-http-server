@@ -19,6 +19,7 @@ public import HTTPAPIs
 import HTTPTypes
 public import Logging
 import PlatformExecutors
+import SwiftTLSStateMachine
 
 /// An HTTP server that serves HTTP/2 over TLS 1.3 without SwiftNIO.
 ///
@@ -107,10 +108,45 @@ public struct PlatformHTTPServer: HTTPServer {
                         "HTTP/2 server listening",
                         metadata: ["host": .string(configuration.host), "port": .stringConvertible(boundPort)]
                     )
+
+                    // HTTP/3 binds the same port for UDP, so that the port that is reported serves both.
+                    var udpSocket: UDPSocket? = nil
+                    if configuration.http3 != nil {
+                        let udpAddress = try Self.socketAddress(host: configuration.host, port: Int(boundPort))
+                        udpSocket = try await UDPSocket.bind(to: udpAddress)
+                        logger.info(
+                            "HTTP/3 server listening",
+                            metadata: ["host": .string(configuration.host), "port": .stringConvertible(boundPort)]
+                        )
+                    }
                     portContinuation.yield(Int(boundPort))
 
                     do {
                         try await withThrowingDiscardingTaskGroup { group in
+                            if let http3 = configuration.http3, let socket = udpSocket.take() {
+                                var box: UDPSocket? = consume socket
+                                group.addTask {
+                                    let socket = box.take()!
+                                    let quicTLS = ServerTLSConfiguration(
+                                        certificateChain: configuration.certificateChain,
+                                        privateKey: configuration.privateKey,
+                                        alpnProtocols: ["h3"]
+                                    )
+                                    do {
+                                        try await Self.serveHTTP3(
+                                            socket: socket,
+                                            configuration: http3,
+                                            tlsConfiguration: try quicTLS.makeHandshakeConfiguration(),
+                                            onStream: onStream,
+                                            logger: logger
+                                        )
+                                    } catch {
+                                        try? await socket.close()
+                                        throw error
+                                    }
+                                    try await socket.close()
+                                }
+                            }
                             while !Task.isCancelled {
                                 let connection = try await listener.accept()
                                 var box: TCPConnection? = consume connection
@@ -210,6 +246,39 @@ public struct PlatformHTTPServer: HTTPServer {
                     writer: frameWriter,
                     onStream: onStream
                 )
+            }
+        }
+    }
+
+    // MARK: - HTTP/3
+
+    /// Serves HTTP/3 over QUIC on a bound UDP socket until the task is cancelled.
+    static func serveHTTP3(
+        socket: borrowing UDPSocket,
+        configuration: HTTP3ServerConfiguration,
+        tlsConfiguration: ServerHandshakeConfiguration,
+        onStream: @escaping @Sendable (consuming HTTP2Stream) async -> Void,
+        logger: Logger
+    ) async throws {
+        try await QUICServerEndpoint.run(
+            socket: socket,
+            configuration: configuration.quic,
+            tlsConfiguration: tlsConfiguration,
+            logger: logger
+        ) { connection in
+            guard connection.negotiatedALPN == "h3" else {
+                // H3_VERSION_FALLBACK is not right either; the handshake only offers h3.
+                connection.close(applicationErrorCode: HTTP3ErrorCode.generalProtocolError.rawValue)
+                return
+            }
+            do {
+                try await HTTP3ServerDriver(configuration: configuration).run(
+                    connection: HTTP3Connection(quic: connection),
+                    onStream: onStream
+                )
+                connection.close(applicationErrorCode: HTTP3ErrorCode.noError.rawValue)
+            } catch {
+                logger.debug("HTTP/3 connection terminated", metadata: ["error": .string(String(describing: error))])
             }
         }
     }

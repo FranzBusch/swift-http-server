@@ -131,6 +131,11 @@ let package = Package(
             url: "https://github.pie.apple.com/fbusch/swift-nio-http2-state-machine.git",
             revision: "f685563cbf0dd32ef2877a88d3f29aeaf9bdfe6e"
         ),
+        // The HTTP/3 and QPACK state machines of swift-nio-http3 without NIO, as a package with an identity of its own.
+        .package(
+            url: "https://github.pie.apple.com/fbusch/swift-nio-http3-state-machine.git",
+            revision: "762c20f51a6f80b86e915dd8b8d2df6594223b05"
+        ),
         .package(
             url: "https://github.pie.apple.com/fbusch/swift-tls.git",
             revision: "d85e2fb9e335e87f11d0bddcd80aa0a41361d56b"
@@ -247,6 +252,8 @@ let package = Package(
                 .product(name: "BinaryParsingAsync", package: "swift-binary-parsing"),
                 .product(name: "BinarySerialization", package: "swift-binary-parsing"),
                 .product(name: "HTTP2StateMachine", package: "swift-nio-http2-state-machine"),
+                .product(name: "HTTP3StateMachine", package: "swift-nio-http3-state-machine"),
+                .product(name: "QPACKStateMachine", package: "swift-nio-http3-state-machine"),
                 .product(name: "SwiftTLSStateMachine", package: "swift-tls"),
                 .product(name: "PlatformExecutors", package: "swift-platform-executors"),
                 .product(name: "HTTPAPIs", package: "swift-http-api-proposal"),
@@ -284,6 +291,8 @@ let package = Package(
                 "PlatformHTTPServer",
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "HTTP2StateMachine", package: "swift-nio-http2-state-machine"),
+                .product(name: "HTTP3StateMachine", package: "swift-nio-http3-state-machine"),
+                .product(name: "QPACKStateMachine", package: "swift-nio-http3-state-machine"),
                 .product(name: "BinaryParsing", package: "swift-binary-parsing"),
                 .product(name: "BinaryParsingAsync", package: "swift-binary-parsing"),
                 .product(name: "BinarySerialization", package: "swift-binary-parsing"),

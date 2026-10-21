@@ -179,6 +179,20 @@ struct QUICConnection: Sendable {
         try await body(QUICFrameReader(core: self.core), QUICFrameWriter(core: self.core))
     }
 
+    /// Resets the sending direction of a stream.
+    func reset(streamID: UInt64, applicationErrorCode: UInt64) {
+        _ = try? self.core.update { (connection, _) throws(QUICConnectionError) in
+            connection.reset(streamID: streamID, applicationErrorCode: applicationErrorCode)
+        }
+    }
+
+    /// Asks the peer to stop sending on a stream.
+    func stopSending(streamID: UInt64, applicationErrorCode: UInt64) {
+        _ = try? self.core.update { (connection, _) throws(QUICConnectionError) in
+            connection.stopSending(streamID: streamID, applicationErrorCode: applicationErrorCode)
+        }
+    }
+
     /// Closes the connection with an application error code.
     func close(applicationErrorCode: UInt64, reason: String = "") {
         _ = try? self.core.update { (connection, _) throws(QUICConnectionError) in

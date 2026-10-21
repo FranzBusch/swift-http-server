@@ -38,6 +38,12 @@ public struct PlatformHTTPServerConfiguration: Sendable {
     /// The configuration of every HTTP/2 connection.
     public var http2: HTTP2ServerConfiguration
 
+    /// The configuration of HTTP/3, or `nil` to serve HTTP/2 only.
+    ///
+    /// With HTTP/3, the server also binds a UDP socket to the address and port of the TCP listener and serves
+    /// HTTP/3 over QUIC on it.
+    public var http3: HTTP3ServerConfiguration?
+
     /// Creates a configuration.
     public init(
         host: String,
@@ -46,7 +52,8 @@ public struct PlatformHTTPServerConfiguration: Sendable {
         privateKey: Certificate.PrivateKey,
         threadCount: Int? = nil,
         ioBackend: IOBackend = .platformDefault,
-        http2: HTTP2ServerConfiguration = .init()
+        http2: HTTP2ServerConfiguration = .init(),
+        http3: HTTP3ServerConfiguration? = nil
     ) {
         self.host = host
         self.port = port
@@ -55,6 +62,7 @@ public struct PlatformHTTPServerConfiguration: Sendable {
         self.threadCount = threadCount
         self.ioBackend = ioBackend
         self.http2 = http2
+        self.http3 = http3
     }
 
     /// The mechanism that performs the I/O of the server.
