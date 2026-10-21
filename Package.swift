@@ -253,6 +253,7 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "X509", package: "swift-certificates"),
                 .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "CryptoExtras", package: "swift-crypto"),
                 .product(name: "SwiftASN1", package: "swift-asn1"),
             ],
             swiftSettings: extraSettings
@@ -295,6 +296,7 @@ let package = Package(
                 .product(name: "SwiftTLSStateMachine", package: "swift-tls"),
                 .product(name: "X509", package: "swift-certificates"),
                 .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "CryptoExtras", package: "swift-crypto"),
             ],
             swiftSettings: extraSettings
         ),
